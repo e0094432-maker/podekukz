@@ -1,20 +1,26 @@
-import sqlite3
 import hashlib
-from config import DB_PATH
+import logging
+import redis
+
+from config import REDIS_URL
+
+logger = logging.getLogger(__name__)
+
+# Отдельный сервис Redis на Render — не стирается при передеплое бота,
+# в отличие от локального файла на бесплатном Web Service.
+_client = redis.from_url(REDIS_URL, decode_responses=True)
+
+POSTED_SET_KEY = "podelukz:posted_hashes"
 
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS posted (
-            hash TEXT PRIMARY KEY,
-            link TEXT,
-            title TEXT,
-            posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
+    # Redis ничего не нужно создавать заранее — просто проверим соединение.
+    try:
+        _client.ping()
+        logger.info("Соединение с Redis установлено.")
+    except Exception as e:
+        logger.error(f"Не удалось подключиться к Redis: {e}")
+        raise
 
 
 def _hash_article(article):
@@ -23,19 +29,10 @@ def _hash_article(article):
 
 
 def already_posted(article):
-    conn = sqlite3.connect(DB_PATH)
     h = _hash_article(article)
-    row = conn.execute("SELECT 1 FROM posted WHERE hash = ?", (h,)).fetchone()
-    conn.close()
-    return row is not None
+    return bool(_client.sismember(POSTED_SET_KEY, h))
 
 
 def mark_posted(article):
-    conn = sqlite3.connect(DB_PATH)
     h = _hash_article(article)
-    conn.execute(
-        "INSERT OR IGNORE INTO posted (hash, link, title) VALUES (?, ?, ?)",
-        (h, article.get("link"), article.get("title")),
-    )
-    conn.commit()
-    conn.close()
+    _client.sadd(POSTED_SET_KEY, h)
