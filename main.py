@@ -5,6 +5,10 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from config import POLL_INTERVAL_MINUTES
+
+# Максимум постов за один проход — чтобы не заваливало канал разом,
+# даже если источники накопили много новых статей.
+MAX_POSTS_PER_CYCLE = 3
 from db import init_db, already_posted, mark_posted
 from news_fetcher import fetch_latest_articles
 from generator import generate_post
@@ -40,6 +44,9 @@ def run_cycle():
 
     new_count = 0
     for article in articles:
+        if new_count >= MAX_POSTS_PER_CYCLE:
+            logger.info(f"Достигнут лимит {MAX_POSTS_PER_CYCLE} постов за цикл, остальное — в следующий раз")
+            break
         if not article["title"] or not article["link"]:
             continue
         if already_posted(article):
