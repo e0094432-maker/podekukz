@@ -1,5 +1,8 @@
 import logging
+import os
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from config import POLL_INTERVAL_MINUTES
 from db import init_db, already_posted, mark_posted
@@ -12,6 +15,23 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    # Render (бесплатный Web Service) должен получать ответ на пинг,
+    # иначе решит, что сервис не работает, и перезапустит его.
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, format, *args):
+        pass  # не засоряем логи пингами
+
+
+def _run_health_server():
+    port = int(os.environ.get("PORT", "10000"))
+    HTTPServer(("0.0.0.0", port), _HealthHandler).serve_forever()
 
 
 def run_cycle():
@@ -51,6 +71,7 @@ def run_cycle():
 
 def main():
     init_db()
+    threading.Thread(target=_run_health_server, daemon=True).start()
     logger.info("Бот запущен. Проверка новостей каждые %s мин.", POLL_INTERVAL_MINUTES)
     while True:
         try:
