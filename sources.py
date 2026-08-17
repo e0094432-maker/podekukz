@@ -13,5 +13,7 @@
 RSS_FEEDS = [
     "https://astanatimes.com/feed/atom/",   # The Astana Times
     "https://time.kz/rss",                   # Time.kz
-    "https://liter.kz/feed/",                # Liter.kz
+    "https://liter.kz/feed/",                # Liter.kz (иногда не отвечает — не критично)
+    "https://www.lada.kz/rss.xml",           # Lada.kz (Актау, Мангистауская область)
+    "http://en.tengrinews.kz/news.rss",      # Tengrinews.kz (англоязычная версия)
 ]

@@ -24,10 +24,19 @@ logger = logging.getLogger(__name__)
 class _HealthHandler(BaseHTTPRequestHandler):
     # Render (бесплатный Web Service) должен получать ответ на пинг,
     # иначе решит, что сервис не работает, и перезапустит его.
+    # Мониторы аптайма (UptimeRobot и подобные) часто шлют HEAD-запросы
+    # вместо GET — обрабатываем оба одинаково, иначе без do_HEAD
+    # сервер отвечает 501 и мониторинг считает сайт недоступным.
     def do_GET(self):
         self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
         self.end_headers()
         self.wfile.write(b"ok")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
 
     def log_message(self, format, *args):
         pass  # не засоряем логи пингами
@@ -35,7 +44,14 @@ class _HealthHandler(BaseHTTPRequestHandler):
 
 def _run_health_server():
     port = int(os.environ.get("PORT", "10000"))
-    HTTPServer(("0.0.0.0", port), _HealthHandler).serve_forever()
+    try:
+        HTTPServer(("0.0.0.0", port), _HealthHandler).serve_forever()
+    except Exception as e:
+        # Раньше исключение тут гасилось молча, из-за чего Render мог
+        # не обнаружить открытый порт и стабильно отдавать 502, хотя сам
+        # бот при этом продолжал работать. Логируем явно, чтобы это
+        # было видно в логах Render.
+        logger.error(f"Health-check сервер не смог подняться: {e}")
 
 
 def run_cycle():
