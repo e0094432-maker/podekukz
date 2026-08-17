@@ -8,6 +8,36 @@ logger = logging.getLogger(__name__)
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+# Хэштеги подбираются кодом (не ИИ) — надёжнее и без лишних токенов.
+# Именно по ним люди находят канал через поиск Telegram.
+CITY_HASHTAGS = {
+    "астана": "#Астана", "алматы": "#Алматы", "шымкент": "#Шымкент",
+    "караганда": "#Караганда", "павлодар": "#Павлодар",
+}
+TOPIC_HASHTAGS = {
+    "закон": "#Закон", "поправк": "#Закон", "штраф": "#Штрафы",
+    "льгот": "#Льготы", "выплат": "#Выплаты", "пенси": "#Пенсия",
+    "экономик": "#Экономика", "спорт": "#Спорт",
+}
+
+
+def _build_hashtags(article):
+    text = f"{article.get('title', '')} {article.get('summary', '')}".lower()
+    tags = ["#Казахстан"]
+
+    for keyword, tag in CITY_HASHTAGS.items():
+        if keyword in text and tag not in tags:
+            tags.append(tag)
+
+    for keyword, tag in TOPIC_HASHTAGS.items():
+        if keyword in text and tag not in tags:
+            tags.append(tag)
+
+    if article.get("is_legal") and "#Закон" not in tags:
+        tags.append("#Закон")
+
+    return " ".join(tags[:5])  # не больше 5, чтобы не выглядело спамом
+
 # Системный промпт — задаёт логику комментирования, требования из ТЗ:
 # - тон: как политик / как мотиватор / как журналист, всегда с лёгкой критикой
 # - обязательный прогноз: плюсы и минусы новости для человека
@@ -38,6 +68,10 @@ SYSTEM_PROMPT = """Ты пишешь комментарии к казахста�
 Пиши по-русски, разговорным языком, без канцелярита, короткими предложениями.
 Комментарий должен быть 3-6 предложений — это пост в Telegram-канал, не статья.
 Никогда не выдумывай факты, которых нет в присланном тексте новости.
+
+В конце поста всегда добавляй короткий вопрос читателю по теме новости —
+он должен звать высказаться в комментариях (например "А как думаете, кому
+это на руку?" или "Вы бы так поступили?"), одна короткая фраза, не отдельный абзац.
 """
 
 # Отдельные инструкции для новостей про законы/поправки —
@@ -99,7 +133,11 @@ def generate_post(article):
 
         data = resp.json()
         text = data["choices"][0]["message"]["content"].strip()
-        return text or None
+        if not text:
+            return None
+
+        hashtags = _build_hashtags(article)
+        return f"{text}\n\n{hashtags}"
     except Exception as e:
         logger.error(f"Ошибка генерации Groq: {e}")
         return None
