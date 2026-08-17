@@ -3,12 +3,12 @@ import os
 # Все секреты берутся из переменных окружения (.env), никогда не хардкодим в коде.
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHANNEL = os.environ.get("TELEGRAM_CHANNEL", "@podelukz")
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
 # Каждые N минут проверяем источники
 POLL_INTERVAL_MINUTES = int(os.environ.get("POLL_INTERVAL_MINUTES", "20"))
 
-# Модель Gemini (бесплатный тариф)
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# Модель Groq (бесплатный тариф, лимит заметно выше, чем у Gemini)
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 DB_PATH = os.environ.get("DB_PATH", "posted_news.db")

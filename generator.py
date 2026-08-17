@@ -1,13 +1,12 @@
 import logging
-import google.generativeai as genai
+import requests
 
-from config import GEMINI_API_KEY, GEMINI_MODEL
+from config import GROQ_API_KEY, GROQ_MODEL
 from style_examples import STYLE_EXAMPLES
 
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=GEMINI_API_KEY)
-_model = genai.GenerativeModel(GEMINI_MODEL)
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Системный промпт — задаёт логику комментирования, требования из ТЗ:
 # - тон: как политик / как мотиватор / как журналист, всегда с лёгкой критикой
@@ -41,9 +40,8 @@ SYSTEM_PROMPT = """Ты пишешь комментарии к казахста�
 Никогда не выдумывай факты, которых нет в присланном тексте новости.
 """
 
-# Отдельные инструкции для юридических новостей (adilet.zan.kz) —
-# это официальные тексты законов/поправок, не журналистские статьи,
-# поэтому подход другой: объяснить простым языком, что изменилось.
+# Отдельные инструкции для новостей про законы/поправки —
+# подход другой: объяснить простым языком, что именно изменилось.
 LEGAL_INSTRUCTIONS = """
 Это новость про новый закон, поправки или изменение в законодательстве Казахстана.
 
@@ -53,9 +51,8 @@ LEGAL_INSTRUCTIONS = """
 3. Кого это касается (кто должен обратить внимание).
 4. Прогноз: Плюс — что это даёт человеку. Минус — какие новые обязанности,
    риски или ограничения это создаёт.
-Если из текста не ясно, что именно изменилось (например, дан только номер
-и дата закона без содержания) — честно скажи, что это принятый документ,
-и посоветуй проверить детали по ссылке источника. Не придумывай содержание.
+Если из текста не ясно, что именно изменилось — честно скажи, что это принятый
+документ, и посоветуй проверить детали по ссылке источника. Не придумывай содержание.
 """
 
 
@@ -68,14 +65,13 @@ def _style_block():
 
 def generate_post(article):
     """
-    article: {title, link, summary, source, source_type}
-    source_type: "news" или "legal" — влияет на то, как строится комментарий.
+    article: {title, link, summary, source, is_legal}
     Возвращает готовый текст поста (с комментарием) или None при ошибке.
     """
     extra_instructions = LEGAL_INSTRUCTIONS if article.get("is_legal") else ""
+    system_content = f"{SYSTEM_PROMPT}{extra_instructions}{_style_block()}"
 
-    prompt = (
-        f"{SYSTEM_PROMPT}{extra_instructions}{_style_block()}\n\n"
+    user_content = (
         f"Новость:\nЗаголовок: {article['title']}\n"
         f"Источник: {article['source']}\n"
         f"Текст: {article['summary'][:1500]}\n\n"
@@ -84,11 +80,26 @@ def generate_post(article):
     )
 
     try:
-        response = _model.generate_content(prompt)
-        text = (response.text or "").strip()
-        if not text:
+        resp = requests.post(
+            GROQ_URL,
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            json={
+                "model": GROQ_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content},
+                ],
+                "temperature": 0.7,
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            logger.error(f"Ошибка генерации Groq ({resp.status_code}): {resp.text[:300]}")
             return None
-        return text
+
+        data = resp.json()
+        text = data["choices"][0]["message"]["content"].strip()
+        return text or None
     except Exception as e:
-        logger.error(f"Ошибка генерации Gemini: {e}")
+        logger.error(f"Ошибка генерации Groq: {e}")
         return None
